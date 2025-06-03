@@ -1,9 +1,7 @@
 import streamlit as st
 import sqlite3
-import pandas as pd
 from streamlit_option_menu import option_menu
-from awesome_table import AwesomeTable
-from awesome_table.column import Column
+from models import Client, Request
 
 
 # Conexión a la base de datos
@@ -12,21 +10,40 @@ def get_connection():
     return conn
 
 # Guardar cliente
-def guardar_cliente(nombre, correo, telefono):
+def save_client(client: Client):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO clientes (nombre, correo, telefono) VALUES (?, ?, ?)", (nombre, correo, telefono))
+    cursor.execute("INSERT INTO clients (name, email, phone) VALUES (?, ?, ?)",
+                   (client.name, client.email, client.phone))
     conn.commit()
     conn.close()
 
-# Mostrar clientes
-def obtener_clientes():
+# Guardar solicitud
+def save_request(request: Request):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM clientes")
-    clientes = cursor.fetchall()
+    cursor.execute("INSERT INTO requests (client_id, income, monthly_payment, term, mount, garantee, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                   (request.client_id, request.income, request.monthly_payment, request.term, request.mount, request.garantee, request.status))
+    conn.commit()
     conn.close()
-    return clientes
+
+# Mostrar solicitudes
+def get_requests():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM requests")
+    requests = cursor.fetchall()
+    conn.close()
+    return requests
+
+# Mostrar clientes
+def get_clients():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM clients")
+    clients = cursor.fetchall()
+    conn.close()
+    return clients
 
 # Interfaz en Streamlit
 with st.sidebar:
@@ -37,23 +54,51 @@ st.title(selected)
 
 if selected == "Agregar Cliente":
     with st.form(key='form_cliente'):
-        nombre = st.text_input("Nombre")
-        correo = st.text_input("Correo")
-        telefono = st.text_input("Teléfono")
+        name = st.text_input("Nombre")
+        email = st.text_input("Correo")
+        phone = st.text_input("Teléfono")
         submit_button = st.form_submit_button(label='Registrar')
 
     if submit_button:
-        if nombre and correo and telefono:
-            guardar_cliente(nombre, correo, telefono)
+        if name and email and phone:
+            client = Client(name, email, phone)
+            save_client(client)
             st.success("¡Cliente registrado exitosamente!")
         else:
             st.warning("Por favor, completa todos los campos.")
 
 elif selected == "Listar Clientes":
-    clientes = obtener_clientes()
-    AwesomeTable(pd.json_normalize(clientes), columns=[
-        Column(name='id', label='ID'),
-        Column(name='nombre', label='Name'),
-        Column(name='correo', label='Job Title'),
-        Column(name='telefono', label='Avatar'),
-])
+    clients = get_clients()
+    if clients:
+        st.write("Lista de Clientes:")
+        for client in clients:
+            st.write(f"ID: {client[0]}, Nombre: {client[1]}, Correo: {client[2]}, Teléfono: {client[3]}")
+    else:
+        st.write("No hay clientes registrados.")
+
+elif selected == "Agregar Solicitud":
+    with st.form(key='form_solicitud'):
+        client_id = st.number_input("ID del Cliente", min_value=1, step=1)
+        income = st.number_input("Ingreso Mensual", min_value=0.0, step=1000.0)
+        monthly_payment = st.number_input("Pago Mensual", min_value=0.0, step=100.0)
+        term = st.number_input("Plazo (meses)", min_value=1, step=1)
+        mount = st.number_input("Monto Solicitado", min_value=0.0, step=1000.0)
+        garantee = st.text_input("Garantía")
+        submit_button = st.form_submit_button(label='Registrar Solicitud')
+
+    if submit_button:
+        if client_id and income and monthly_payment and term and mount and garantee:
+            request = Request(client_id, income, monthly_payment, term, mount, garantee)
+            save_request(request)
+            st.success("¡Solicitud registrada exitosamente!")
+        else:
+            st.warning("Por favor, completa todos los campos.")
+
+elif selected == "Listar Solicitudes":
+    requests = get_requests()
+    if requests:
+        st.write("Lista de Solicitudes:")
+        for request in requests:
+            st.write(f"ID: {request[0]}, Cliente ID: {request[1]}, Ingreso: {request[2]}, Pago Mensual: {request[3]}, Plazo: {request[4]}, Monto: {request[5]}, Garantía: {request[6]}, Estado: {request[7]}")
+    else:
+        st.write("No hay solicitudes registradas.")
