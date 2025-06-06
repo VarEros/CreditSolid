@@ -2,7 +2,8 @@ import streamlit as st
 import sqlite3
 from streamlit_option_menu import option_menu
 from models import Client, Request
-
+import pandas as pd
+from openai import OpenAI
 
 # Conexión a la base de datos
 def get_connection():
@@ -22,8 +23,8 @@ def save_client(client: Client):
 def save_request(request: Request):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO requests (client_id, income, monthly_payment, term, mount, garantee, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                   (request.client_id, request.income, request.monthly_payment, request.term, request.mount, request.garantee, request.status))
+    cursor.execute("INSERT INTO requests (client_id, income, monthly_payment, term, mount, garantee, status, employment, debt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                   (request.client_id, request.income, request.monthly_payment, request.term, request.mount, request.garantee, request.status, request.employment, request.debt))
     conn.commit()
     conn.close()
 
@@ -45,6 +46,9 @@ def get_clients():
     conn.close()
     return clients
 
+
+client = OpenAI()
+
 # Interfaz en Streamlit
 with st.sidebar:
     selected = option_menu("Main Menu", ["Listar Clientes", "Agregar Cliente", 'Agregar Solicitud', 'Listar Solicitudes'], 
@@ -64,31 +68,47 @@ if selected == "Agregar Cliente":
             client = Client(name, email, phone)
             save_client(client)
             st.success("¡Cliente registrado exitosamente!")
+            #clear inputs
+            st.text_input("Nombre", value="")
+            st.text_input("Correo", value="")
+            st.text_input("Teléfono", value="")
         else:
             st.warning("Por favor, completa todos los campos.")
 
 elif selected == "Listar Clientes":
     clients = get_clients()
     if clients:
-        st.write("Lista de Clientes:")
-        for client in clients:
-            st.write(f"ID: {client[0]}, Nombre: {client[1]}, Correo: {client[2]}, Teléfono: {client[3]}")
+        df = pd.DataFrame(clients, columns=["ID", "Nombre", "Correo", "Teléfono"])
+        st.dataframe(df)
     else:
         st.write("No hay clientes registrados.")
 
 elif selected == "Agregar Solicitud":
+    clients = get_clients()
     with st.form(key='form_solicitud'):
-        client_id = st.number_input("ID del Cliente", min_value=1, step=1)
-        income = st.number_input("Ingreso Mensual", min_value=0.0, step=1000.0)
-        monthly_payment = st.number_input("Pago Mensual", min_value=0.0, step=100.0)
-        term = st.number_input("Plazo (meses)", min_value=1, step=1)
+        client_id = st.selectbox("Seleccionar Cliente", [client[0] for client in clients], format_func=lambda x: next((c[1] for c in clients if c[0] == x), ""))
+        income = st.number_input("Ingreso Mensual (Dolares)", min_value=0.0, step=1000.0)
+        monthly_payment = st.number_input("Gastos mensuales (Dolares)", min_value=0.0, step=100.0)
+        term = st.number_input("Plazo (meses)", min_value=1, step=1)    
         mount = st.number_input("Monto Solicitado", min_value=0.0, step=1000.0)
+        #create a date input with a validate for employment date
+        st.write("Fecha de empleo debe ser menor o igual a la fecha actual")
+        
+        employment = st.date_input("fecha de empleo", value=pd.to_datetime('today'))
+        debt = st.number_input("Deuda", min_value=0.0, step=100.0)
+
         garantee = st.text_input("Garantía")
         submit_button = st.form_submit_button(label='Registrar Solicitud')
 
+      
+           
     if submit_button:
         if client_id and income and monthly_payment and term and mount and garantee:
-            request = Request(client_id, income, monthly_payment, term, mount, garantee)
+            request = Request(client_id, income, monthly_payment, term, mount, garantee,employment, debt)
+        if  employment <= pd.to_datetime('today').date():
+            request = Request(client_id, income, monthly_payment, term, mount, garantee, employment, debt)
+
+
             save_request(request)
             st.success("¡Solicitud registrada exitosamente!")
         else:
@@ -97,8 +117,13 @@ elif selected == "Agregar Solicitud":
 elif selected == "Listar Solicitudes":
     requests = get_requests()
     if requests:
-        st.write("Lista de Solicitudes:")
-        for request in requests:
-            st.write(f"ID: {request[0]}, Cliente ID: {request[1]}, Ingreso: {request[2]}, Pago Mensual: {request[3]}, Plazo: {request[4]}, Monto: {request[5]}, Garantía: {request[6]}, Estado: {request[7]}")
+        df = pd.DataFrame(requests, columns=["ID", "Cliente ID", "Ingreso Mensual", "Pago Mensual", "Plazo (meses)", "Monto Solicitado", "Garantía", "Estado", "Fecha de Empleo", "Deuda"])
+        st.dataframe(df)
     else:
         st.write("No hay solicitudes registradas.")
+
+
+
+
+
+        

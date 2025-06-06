@@ -6,14 +6,34 @@ cursor = conn.cursor()
 
 # Crear la tabla si no existe
 cursor.execute('''
-CREATE TABLE IF NOT EXISTS clientes (
+CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nombre TEXT,
-    correo TEXT,
-    telefono TEXT
+    name TEXT,
+    email TEXT,
+    phone TEXT
 )
 ''')
+
+# Crear la tabla de solicitudes si no existe
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id INTEGER,
+    income REAL,
+    monthly_payment REAL,
+    term INTEGER,
+    mount REAL,
+    garantee TEXT,
+    status TEXT,
+    employment date,    
+    debt REAL,
+    FOREIGN KEY (client_id) REFERENCES clients (id)
+)
+''')
+
 
 # Guardar cambios y cerrar
 conn.commit()
 conn.close()
+        
+        
