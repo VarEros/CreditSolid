@@ -24,9 +24,9 @@ CREATE TABLE IF NOT EXISTS requests (
     term INTEGER,
     mount REAL,
     garantee TEXT,
-    status TEXT,
-    employment date,    
+    employment_date date,
     debt REAL,
+    status TEXT,
     FOREIGN KEY (client_id) REFERENCES clients (id)
 )
 ''')

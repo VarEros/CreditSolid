@@ -1,9 +1,13 @@
 import streamlit as st
-import sqlite3
-from streamlit_option_menu import option_menu
-from models import Client, Request
 import pandas as pd
+import sqlite3
+
+from streamlit_option_menu import option_menu
 from openai import OpenAI
+
+from models import Client, Request
+from expert_system import ExpertSystem
+
 
 # Conexión a la base de datos
 def get_connection():
@@ -23,7 +27,7 @@ def save_client(client: Client):
 def save_request(request: Request):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO requests (client_id, income, monthly_payment, term, mount, garantee, status, employment, debt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    cursor.execute("INSERT INTO requests (client_id, income, monthly_payment, term, mount, garantee, status, employmentDate, debt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                    (request.client_id, request.income, request.monthly_payment, request.term, request.mount, request.garantee, request.status, request.employment, request.debt))
     conn.commit()
     conn.close()
@@ -46,13 +50,16 @@ def get_clients():
     conn.close()
     return clients
 
+def format_request_name(req):
+    return f"Solicitud {req[0]} - Cliente {req[1]} - Monto: ${req[5]} - Estado: {req[7]}"
 
-client = OpenAI()
+# client = OpenAI()
+expert_system = ExpertSystem()
 
 # Interfaz en Streamlit
 with st.sidebar:
-    selected = option_menu("Main Menu", ["Listar Clientes", "Agregar Cliente", 'Agregar Solicitud', 'Listar Solicitudes'], 
-        icons=['people', 'people', 'people', 'people'], menu_icon="cast", default_index=1)
+    selected = option_menu("Main Menu", ["Listar Clientes", "Agregar Cliente", 'Agregar Solicitud', 'Listar Solicitudes', 'Evaluar Solicitud'], 
+        icons=['people', 'people', 'people', 'people', 'people'], menu_icon="cast", default_index=1)
 
 st.title(selected)
 
@@ -68,10 +75,6 @@ if selected == "Agregar Cliente":
             client = Client(name, email, phone)
             save_client(client)
             st.success("¡Cliente registrado exitosamente!")
-            #clear inputs
-            st.text_input("Nombre", value="")
-            st.text_input("Correo", value="")
-            st.text_input("Teléfono", value="")
         else:
             st.warning("Por favor, completa todos los campos.")
 
@@ -89,7 +92,7 @@ elif selected == "Agregar Solicitud":
         client_id = st.selectbox("Seleccionar Cliente", [client[0] for client in clients], format_func=lambda x: next((c[1] for c in clients if c[0] == x), ""))
         income = st.number_input("Ingreso Mensual (Dolares)", min_value=0.0, step=1000.0)
         monthly_payment = st.number_input("Gastos mensuales (Dolares)", min_value=0.0, step=100.0)
-        term = st.number_input("Plazo (meses)", min_value=1, step=1)    
+        term = st.number_input("Plazo (meses)", min_value=1, step=1)
         mount = st.number_input("Monto Solicitado", min_value=0.0, step=1000.0)
         #create a date input with a validate for employment date
         st.write("Fecha de empleo debe ser menor o igual a la fecha actual")
@@ -108,7 +111,6 @@ elif selected == "Agregar Solicitud":
         if  employment <= pd.to_datetime('today').date():
             request = Request(client_id, income, monthly_payment, term, mount, garantee, employment, debt)
 
-
             save_request(request)
             st.success("¡Solicitud registrada exitosamente!")
         else:
@@ -122,8 +124,29 @@ elif selected == "Listar Solicitudes":
     else:
         st.write("No hay solicitudes registradas.")
 
-
-
-
-
+elif selected == "Evaluar Solicitud":
+    with st.form(key='form_evaluar'):
+        requests = get_requests()
+        clients = get_clients()
+        # for each request, add the client name to the request
+        requests = [(req[0], req[1], req[2], req[3], req[4], req[5], req[6], req[7], req[8], req[9], next((c[1] for c in clients if c[0] == req[1]), "")) for req in requests]
+        selected_request_id = st.selectbox("Seleccionar Solicitud", [req[0] for req in requests], format_func=lambda x: next((f"Solicitud {req[0]} -  {req[10]} ${req[5]}" for req in requests if req[0] == x), ""))
+        submit_button = st.form_submit_button(label='Evaluar Solicitud')
         
+        if submit_button:
+            request = next((req for req in requests if req[0] == selected_request_id), None)
+            if request:
+                st.write(f"Solicitud ID: {request[0]}")
+                st.write(f"Cliente ID: {request[1]}")
+                st.write(f"Ingreso Mensual: {request[2]}")
+                st.write(f"Pago Mensual: {request[3]}")
+                st.write(f"Plazo (meses): {request[4]}")
+                st.write(f"Monto Solicitado: {request[5]}")
+                st.write(f"Garantía: {request[6]}")
+                st.write(f"Estado: {request[7]}")
+                st.write(f"Fecha de Empleo: {request[8]}")
+                st.write(f"Deuda: {request[9]}")
+
+                # Aquí se llamaría al sistema experto para evaluar la solicitud
+                resultado, probabilidad = expert_system.evaluar(Request.from_tuple(request))
+                st.write(f"Resultado de la evaluación: {resultado} (Probabilidad: {probabilidad:.2f})")
