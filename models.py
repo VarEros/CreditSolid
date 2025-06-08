@@ -22,6 +22,20 @@ class Request:
         self.debt: float = debt
         self.status: str = "Pendiente"
 
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'client_id': self.client_id,
+            'income': self.income,
+            'monthly_payment': self.monthly_payment,
+            'term': self.term,
+            'mount': self.mount,
+            'garantee': self.garantee,
+            'employment': self.employment,
+            'debt': self.debt,
+            'status': self.status
+        }
+
     # contructor para crear una solicitud desde un tuple
     @classmethod
     def from_tuple(cls, data):

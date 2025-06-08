@@ -7,6 +7,7 @@ from models import Request
 
 class ExpertSystem:
     def __init__(self):
+        self.evidences = {}
         # CPDs (distribuciones de probabilidad condicional)
         cpd_income = TabularCPD(variable='Income', variable_card=2, values=[[0.6], [0.4]])  # 0: Bajo, 1: Alto
         cpd_debt = TabularCPD(variable='Debt', variable_card=2, values=[[0.5], [0.5]])  # 0: Baja, 1: Alta
@@ -56,7 +57,7 @@ class ExpertSystem:
         self.inference = VariableElimination(model)
 
     def evaluar(self, request: Request):
-        evidencias = request.discretizar_request()
-        resultado = self.inference.query(variables=['Approved'], evidence=evidencias)
+        self.evidences = request.discretizar_request()
+        resultado = self.inference.query(variables=['Approved'], evidence=self.evidences)
         prob_aprobado = resultado.values[1]
         return "Aprobado" if prob_aprobado >= 0.5 else "Rechazado", prob_aprobado

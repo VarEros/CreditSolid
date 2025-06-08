@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
+from datetime import datetime
 
 from streamlit_option_menu import option_menu
 from openai import OpenAI
 
 from models import Client, Request
 from expert_system import ExpertSystem
-
 
 # Conexión a la base de datos
 def get_connection():
@@ -50,16 +50,20 @@ def get_clients():
     conn.close()
     return clients
 
-def format_request_name(req):
-    return f"Solicitud {req[0]} - Cliente {req[1]} - Monto: ${req[5]} - Estado: {req[7]}"
-
-# client = OpenAI()
+# Inicialización de OpenAI
+client = OpenAI(api_key="")
 expert_system = ExpertSystem()
+request_obj = None
+selected_request = None
+
+# Configuración inicial de estado de sesión
+if 'evaluation' not in st.session_state:
+    st.session_state.evaluation = {'resultado': "", 'probabilidad': 0.0}
 
 # Interfaz en Streamlit
 with st.sidebar:
     selected = option_menu("Main Menu", ["Listar Clientes", "Agregar Cliente", 'Agregar Solicitud', 'Listar Solicitudes', 'Evaluar Solicitud'], 
-        icons=['people', 'people', 'people', 'people', 'people'], menu_icon="cast", default_index=1)
+        icons=['people', 'person-add', 'file-earmark-plus', 'list', 'clipboard-check'], menu_icon="cast", default_index=1)
 
 st.title(selected)
 
@@ -72,8 +76,8 @@ if selected == "Agregar Cliente":
 
     if submit_button:
         if name and email and phone:
-            client = Client(name, email, phone)
-            save_client(client)
+            new_client = Client(name, email, phone)
+            save_client(new_client)
             st.success("¡Cliente registrado exitosamente!")
         else:
             st.warning("Por favor, completa todos los campos.")
@@ -89,64 +93,109 @@ elif selected == "Listar Clientes":
 elif selected == "Agregar Solicitud":
     clients = get_clients()
     with st.form(key='form_solicitud'):
-        client_id = st.selectbox("Seleccionar Cliente", [client[0] for client in clients], format_func=lambda x: next((c[1] for c in clients if c[0] == x), ""))
+        client_id = st.selectbox("Seleccionar Cliente", 
+                               [client[0] for client in clients], 
+                               format_func=lambda x: next((c[1] for c in clients if c[0] == x), ""))
         income = st.number_input("Ingreso Mensual (Dolares)", min_value=0.0, step=1000.0)
         monthly_payment = st.number_input("Gastos mensuales (Dolares)", min_value=0.0, step=100.0)
         term = st.number_input("Plazo (meses)", min_value=1, step=1)
         mount = st.number_input("Monto Solicitado", min_value=0.0, step=1000.0)
-        #create a date input with a validate for employment date
-        st.write("Fecha de empleo debe ser menor o igual a la fecha actual")
-        
-        employment = st.date_input("fecha de empleo", value=pd.to_datetime('today'))
+        employment = st.date_input("Fecha de empleo", value=datetime.today())
         debt = st.number_input("Deuda", min_value=0.0, step=100.0)
-
         garantee = st.text_input("Garantía")
         submit_button = st.form_submit_button(label='Registrar Solicitud')
 
-      
-           
     if submit_button:
         if client_id and income and monthly_payment and term and mount and garantee:
-            request = Request(client_id, income, monthly_payment, term, mount, garantee,employment, debt)
-        if  employment <= pd.to_datetime('today').date():
-            request = Request(client_id, income, monthly_payment, term, mount, garantee, employment, debt)
-
-            save_request(request)
-            st.success("¡Solicitud registrada exitosamente!")
+            if employment <= datetime.today().date():
+                request = Request(client_id, income, monthly_payment, term, mount, garantee, employment, debt)
+                save_request(request)
+                st.success("¡Solicitud registrada exitosamente!")
+            else:
+                st.error("Error: La fecha de empleo no puede ser futura")
         else:
             st.warning("Por favor, completa todos los campos.")
 
 elif selected == "Listar Solicitudes":
     requests = get_requests()
     if requests:
-        df = pd.DataFrame(requests, columns=["ID", "Cliente ID", "Ingreso Mensual", "Pago Mensual", "Plazo (meses)", "Monto Solicitado", "Garantía", "Estado", "Fecha de Empleo", "Deuda"])
+        df = pd.DataFrame(requests, columns=["ID", "Cliente ID", "Ingreso Mensual", "Pago Mensual", 
+                                            "Plazo (meses)", "Monto Solicitado", "Garantía", "Estado", 
+                                            "Fecha de Empleo", "Deuda"])
         st.dataframe(df)
     else:
         st.write("No hay solicitudes registradas.")
 
 elif selected == "Evaluar Solicitud":
-    with st.form(key='form_evaluar'):
-        requests = get_requests()
-        clients = get_clients()
-        # for each request, add the client name to the request
-        requests = [(req[0], req[1], req[2], req[3], req[4], req[5], req[6], req[7], req[8], req[9], next((c[1] for c in clients if c[0] == req[1]), "")) for req in requests]
-        selected_request_id = st.selectbox("Seleccionar Solicitud", [req[0] for req in requests], format_func=lambda x: next((f"Solicitud {req[0]} -  {req[10]} ${req[5]}" for req in requests if req[0] == x), ""))
-        submit_button = st.form_submit_button(label='Evaluar Solicitud')
-        
-        if submit_button:
-            request = next((req for req in requests if req[0] == selected_request_id), None)
-            if request:
-                st.write(f"Solicitud ID: {request[0]}")
-                st.write(f"Cliente ID: {request[1]}")
-                st.write(f"Ingreso Mensual: {request[2]}")
-                st.write(f"Pago Mensual: {request[3]}")
-                st.write(f"Plazo (meses): {request[4]}")
-                st.write(f"Monto Solicitado: {request[5]}")
-                st.write(f"Garantía: {request[6]}")
-                st.write(f"Estado: {request[7]}")
-                st.write(f"Fecha de Empleo: {request[8]}")
-                st.write(f"Deuda: {request[9]}")
+    # Obtener datos necesarios
+    requests = get_requests()
+    clients = get_clients()
+    
+    # Crear lista de solicitudes con nombres de clientes
+    requests_with_names = []
+    for req in requests:
+        client_name = next((c[1] for c in clients if c[0] == req[1]), "Cliente desconocido")
+        requests_with_names.append({
+            'id': req[0],
+            'client_id': req[1],
+            'client_name': client_name,
+            'mount': req[5],
+            'data': req
+        })
+    
+    # Selección de solicitud
+    selected_request = st.selectbox(
+        "Seleccionar Solicitud",
+        options=requests_with_names,
+        format_func=lambda x: f"Solicitud {x['id']} - {x['client_name']} - ${x['mount']}"
+    )
+    
+    # Botón de evaluación
+    if st.button('Evaluar Solicitud', key='eval_btn'):
+        if selected_request:
+            request_obj = Request.from_tuple(selected_request['data'])
+            resultado, probabilidad = expert_system.evaluar(request_obj)
+            st.session_state.evaluation = {
+                'resultado': resultado,
+                'probabilidad': probabilidad,
+                'request': request_obj
+            }
+            st.success(f"Resultado de la evaluación: {resultado} (Probabilidad: {probabilidad:.2f})")
+    
+    # Botón de explicación (solo si hay evaluación reciente)
+    if st.session_state.evaluation['resultado']:
+        if st.button('Explicar Resultado', key='explain_btn'):
+            # mandar expertSystem.evidences y request 
+            response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[
+        {
+            "role": "system",
+            "content": "Eres un experto en evaluación de solicitudes de crédito. Tu tarea es analizar resultados de modelos de evaluación crediticia y explicar con claridad cómo se llegó a esa conclusión, basándote en datos y evidencias."
+        },
+        {
+            "role": "user",
+            "content": f"""Analiza el siguiente resultado de evaluación crediticia y explica de forma clara, técnica y concisa lo siguiente:
 
-                # Aquí se llamaría al sistema experto para evaluar la solicitud
-                resultado, probabilidad = expert_system.evaluar(Request.from_tuple(request))
-                st.write(f"Resultado de la evaluación: {resultado} (Probabilidad: {probabilidad:.2f})")
+            1. ¿Qué significa el resultado obtenido? ({st.session_state.evaluation['resultado']})
+            2. ¿Qué indica la probabilidad asociada? ({st.session_state.evaluation['probabilidad']:.2f})
+            3. ¿Qué evidencias del sistema experto influyeron más en la decisión? ({expert_system.evidences})
+            4. Relaciona esas evidencias con los datos de la solicitud.
+            5. Si el resultado es negativo, sugiere recomendaciones para mejorar.
+
+            Datos de la solicitud:
+            - Ingreso mensual: {st.session_state.evaluation['request'].income}
+            - Cuota mensual solicitada: {st.session_state.evaluation['request'].monthly_payment}
+            - Monto del crédito: {st.session_state.evaluation['request'].mount}
+            - Plazo del crédito (meses): {st.session_state.evaluation['request'].term}
+            - Garantía ofrecida: {st.session_state.evaluation['request'].garantee}
+            - Empleo: {st.session_state.evaluation['request'].employment}
+            - Deuda existente: {st.session_state.evaluation['request'].debt}
+            """
+                    }
+                ]
+            )
+
+            explanation = response.choices[0].message.content
+            st.subheader("Explicación del resultado:")
+            st.write(explanation)
